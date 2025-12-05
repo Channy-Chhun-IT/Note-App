@@ -16,6 +16,7 @@ pipeline {
         }
 
         stage('Build') {
+            tools { nodejs 'Node20' }
             steps {
                 sh '''
                     npm install
