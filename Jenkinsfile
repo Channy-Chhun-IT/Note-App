@@ -4,6 +4,7 @@ pipeline {
     environment {
         DEPLOY_DIR = "/usr/share/nginx/html/wwwroot"
         BACKUP_DIR = "/opt/deploy_backups"
+        NODEJS = tool name: 'Node20'
     }
 
     stages {
@@ -16,12 +17,22 @@ pipeline {
         }
 
         stage('Build') {
-            tools { nodejs 'Node20' }
             steps {
-                sh '''
-                    npm install
-                    npm run build
-                '''
+                script {
+                    sh '''
+                        if [ -d FE ]; then
+                            cd FE
+                        fi
+
+                        if [ -f package.json ]; then
+                            export PATH=${NODEJS}/bin:$PATH
+                            npm install
+                            npm run build
+                        else
+                            echo "No package.json found Skipping build."
+                        fi
+                    '''
+                }
             }
         }
 
@@ -30,46 +41,41 @@ pipeline {
                 sh '''
                     TIMESTAMP=$(date +%F-%H%M%S)
                     mkdir -p $BACKUP_DIR
-
-                    if [ -n "$(ls -A $DEPLOY_DIR)" ];
-                        sudo zip -r $BACKUP_DIR/site-backup-$TIMESTAMP.zip $DEPLOY_DIR/*
-                        echo "Backup saved to: $BACKUP_DIR/site-backup-$TIMESTAMP.zip"
-                    else
-                        echo "No previous deployment found. Skipping backup."
-                    fi
+                    zip -r $BACKUP_DIR/site-$TIMESTAMP.zip $DEPLOY_DIR
                 '''
             }
         }
 
-        stage('Deploy New Code') {
+        stage('Deploy') {
             steps {
                 sh '''
-                    # Clean old site
                     sudo rm -rf $DEPLOY_DIR/*
 
-                    # Deploy built files (dist folder from npm run build)
-                    sudo cp -r dist/* $DEPLOY_DIR/
+                    if [ -d FE ]; then
+                        cd FE
+                    fi
 
-                    echo "New version deployed to $DEPLOY_DIR"
+                    if [ -d dist ]; then
+                        OUTPUT=dist
+                    else [ -d build ]; then
+                        OUTPUT=build
+                    fi
+
+                    echo "Deploying from: $OUTPUT"
+                    sudo cp -r $OUTPUT/* $DEPLOY_DIR/
                 '''
             }
         }
 
         stage('Reload Nginx') {
             steps {
-                sh '''
-                    sudo systemctl reload nginx
-                '''
+                sh "sudo systemctl reload nginx"
             }
         }
     }
 
     post {
-        success {
-            echo "Deployment Successful!"
-        }
-        failure {
-            echo "Deployment Failed!"
-        }
+        success { echo "Deployment Successful!" }
+        failure { echo "Deployment Failed!" }
     }
 }
