@@ -1,13 +1,20 @@
 pipeline {
     agent any
 
+    environment {
+        DEPLOY_DIR = "/usr/share/nginx/html/wwwroot"
+        BACKUP_DIR = "/opt/deploy_backups"
+    }
+
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Channy-Chhun-IT/Note-App'
             }
         }
+
         stage('Build') {
             steps {
                 sh '''
@@ -16,25 +23,34 @@ pipeline {
                 '''
             }
         }
-        stage('Package') {
+
+        stage('Backup Old Site') {
             steps {
                 sh '''
-                    zip -r app.zip .
+                    TIMESTAMP=$(date +%F-%H%M%S)
+                    mkdir -p $BACKUP_DIR
                 '''
             }
         }
-        stage('Send to Server') {
+
+        stage('Deploy New Code') {
             steps {
                 sh '''
-                    scp -o StrictHostKeyChecking=no app.zip channy@192.168.49.23:/opt/code_upload/site1
-                    scp -o StrictHostKeyChecking=no deploy.sh channy@192.168.49.23:/opt/deploy.sh
+                    # Clean old site
+                    sudo rm -rf $DEPLOY_DIR/*
+
+                    # Deploy new files
+                    sudo cp -r dist/* $DEPLOY_DIR/
+
+                    echo "New version deployed to $DEPLOY_DIR"
                 '''
             }
         }
-        stage('Deploy on Server') {
+
+        stage('Reload Nginx') {
             steps {
                 sh '''
-                    ssh channy@192.168.49.23 "chmod +x /opt/deploy.sh && sudo /opt/deploy.sh"
+                    sudo systemctl reload nginx
                 '''
             }
         }
